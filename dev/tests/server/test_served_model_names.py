@@ -243,6 +243,26 @@ class ServedModelNamesTests(unittest.TestCase):
             harness.request("POST", PATHS[0], request_body(PATHS[0]))[0], 200
         )
 
+    def test_accept_any_model_takes_any_string_name(self):
+        frontend = make_frontend(
+            FakeTokenizer(),
+            None,
+            "test-model",
+            128,
+            1,
+            2,
+            vision=True,
+            served_model_names=ALIASES,
+            accept_any_model=True,
+        )
+        for name in ("claude-sonnet-x", *ALIASES, None, ""):
+            with self.subTest(name=name):
+                self.assertTrue(frontend.accepts_model(name))
+        for name in (7, ["local"], {}):
+            with self.subTest(name=name):
+                self.assertFalse(frontend.accepts_model(name))
+        self.assertEqual(frontend.response_model, "test-model")
+
     def test_an_empty_model_names_the_served_one(self):
         # Messages requires a model, as Anthropic's API does.
         runtime = FakeRuntime()
@@ -363,6 +383,7 @@ class ServedModelNamesTests(unittest.TestCase):
             api.main()
         self.assertEqual(app_type.call_args.kwargs["served_model_names"], ["local"])
         self.assertIs(app_type.call_args.kwargs["announce_served_name"], True)
+        self.assertIs(app_type.call_args.kwargs["accept_any_model"], False)
 
     def test_launcher_forwards_repeated_aliases(self):
         keep_stop_signals(self)

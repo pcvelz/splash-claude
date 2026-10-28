@@ -1866,6 +1866,7 @@ def main():
             thinking_codec=thinking_codec,
             served_model_names=args.served_model_name,
             announce_served_name=args.announce_served_name,
+            accept_any_model=args.accept_any_model,
             default_reasoning_effort=args.default_reasoning_effort,
             default_thinking_token_budget=args.thinking_token_budget,
             sampling_default=args.sampling_default,

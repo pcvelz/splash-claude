@@ -107,6 +107,7 @@ paths for `--model-dir`, `--draft-model` and `--mmproj`.
 | `--cache-dir` | `~/Library/Caches/Splash/prefix-cache` | Where `--persistent-cache` keeps its files; needs `--persistent-cache`. |
 | `--served-model-name` | None | Additional model name the API accepts; repeatable. See [API model aliases](#api-model-aliases). |
 | `--announce-served-name` | Off | Report the first `--served-model-name` in responses; needs `--served-model-name`. |
+| `--accept-any-model` | Off | Accept requests whatever `model` they name; for a proxy that forwards its clients' model names. |
 | `--sampling-default` | None (Qwen's generation config for `temperature`, `top_p` and `top_k`; the neutral value for the rest) | Value of a sampling field that a request leaves out; repeatable, e.g. `temperature=0.6`. See [sampling](api.md#sampling). |
 | `--reasoning` | `SPLASH_REASONING` or `auto` | `off` makes the server decide that no request reasons. See [reasoning](#default-reasoning-effort). |
 | `--default-reasoning-effort` | `SPLASH_DEFAULT_REASONING_EFFORT` or the template's | Effort of Chat and Responses requests that set none. See [default reasoning effort](#default-reasoning-effort). |
@@ -732,7 +733,8 @@ reject the real ID. For them, add `--announce-served-name`, which requires
 accepted name the request used, and `/v1/models` lists that alias first and
 gives every other entry, the real ID included, that alias as its `root`, so
 `splash <client>` configures clients with it. `/status` keeps reporting the
-loaded model.
+loaded model. A proxy that forwards arbitrary names can use `--accept-any-model`
+instead, which accepts any `model` and still reports the same name as above.
 
 ```sh
 splash serve --model mlx-community/Qwen3.8-27B-4bit --served-model-name local-qwen

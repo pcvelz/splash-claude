@@ -274,6 +274,7 @@ class Frontend:
         max_image_pixels=image_input.MAX_PIXELS,
         served_model_names=(),
         announce_served_name=False,
+        accept_any_model=False,
         default_reasoning_effort=None,
         default_thinking_token_budget=None,
         sampling_default=(),
@@ -301,6 +302,7 @@ class Frontend:
             raise ValueError("announce_served_name needs a served model name")
         # The name generation and scoring responses report.
         self.response_model = served[0] if announce_served_name else model
+        self.accept_any_model = bool(accept_any_model)
         # /v1/models order: the name responses report first, so a client
         # configured from data[0] (splash <client>) requests the name it gets
         # back. Every name stays accepted.
@@ -343,9 +345,11 @@ class Frontend:
 
     def accepts_model(self, model):
         """Whether a request may name `model`: a name the server answers to,
-        or none, absent or empty, which means the served model."""
+        or none, absent or empty, which means the served model; with
+        accept_any_model, any string."""
         return model in (None, "") or (
-            isinstance(model, str) and model in self.model_names
+            isinstance(model, str)
+            and (self.accept_any_model or model in self.model_names)
         )
 
     @property

@@ -230,6 +230,7 @@ OPTIONS = {
         ("", "two words", "key\n", "非ASCII"),
     ),
     "--allow-idle-sleep": ([(["--allow-idle-sleep"], True)], []),
+    "--accept-any-model": ([(["--accept-any-model"], True)], []),
     "--no-webui": ([(["--no-webui"], True)], []),
 }
 

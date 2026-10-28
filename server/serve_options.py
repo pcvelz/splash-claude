@@ -631,6 +631,17 @@ SERVE_OPTIONS = (
         ),
     ),
     ServeOption(
+        "--accept-any-model",
+        "api",
+        dict(
+            action="store_true",
+            default=False,
+            help="accept requests whatever model they name, for a proxy that "
+            "forwards its clients' names (default: only the loaded ID and "
+            "--served-model-name names)",
+        ),
+    ),
+    ServeOption(
         "--sampling-default",
         "api",
         dict(
