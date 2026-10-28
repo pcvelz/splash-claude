@@ -1857,6 +1857,7 @@ def main():
             default_reasoning_effort=args.default_reasoning_effort,
             default_thinking_token_budget=args.thinking_token_budget,
             sampling_default=args.sampling_default,
+            reasoning=args.reasoning,
             vision=readiness.vision,
         )
         server.app = app
