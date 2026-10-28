@@ -1,5 +1,24 @@
 # Splash
 
+## About this fork: splash-claude
+
+This fork of [incoai/splash](https://github.com/incoai/splash) is here so that
+Splash can be used with [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
+for as long as upstream Splash doesn't cover that yet. Each fix is also an open
+pull request upstream:
+
+| Fix | Option | Upstream PR |
+|---|---|---|
+| Sampling defaults for requests that set none | `--sampling-default NAME=VALUE` | [#614](https://github.com/incoai/splash/pull/614) |
+| No request reasons, whatever it asks | `--reasoning off` | [#615](https://github.com/incoai/splash/pull/615) |
+| Launch a new engine only once the old one has exited | (bug fix) | [#616](https://github.com/incoai/splash/pull/616) |
+| Exit instead of relaunching a failed engine | `--engine-failure exit` | [#617](https://github.com/incoai/splash/pull/617) |
+
+It works together with
+[llama-swap-macos-extended](https://github.com/pcvelz/llama-swap-macos-extended),
+a proxy that switches between Splash and llama.cpp. The rest of this README is
+upstream's.
+
 [![CI](https://github.com/incoai/splash/actions/workflows/ci.yml/badge.svg)](https://github.com/incoai/splash/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Apple%20silicon-black.svg)](#quick-start)
