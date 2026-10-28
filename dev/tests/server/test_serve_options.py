@@ -231,6 +231,7 @@ OPTIONS = {
     ),
     "--allow-idle-sleep": ([(["--allow-idle-sleep"], True)], []),
     "--accept-any-model": ([(["--accept-any-model"], True)], []),
+    "--sampling-headers": ([(["--sampling-headers"], True)], []),
     "--no-webui": ([(["--no-webui"], True)], []),
 }
 

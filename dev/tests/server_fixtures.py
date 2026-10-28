@@ -786,6 +786,7 @@ def main_args(**overrides):
             "served_model_name": [],
             "announce_served_name": False,
             "accept_any_model": False,
+            "sampling_headers": False,
             "sampling_default": [],
             "default_reasoning_effort": None,
             "reasoning": None,

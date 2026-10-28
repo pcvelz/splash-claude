@@ -658,6 +658,17 @@ SERVE_OPTIONS = (
         text=lambda item: f"{item[0]}={item[1]}",
     ),
     ServeOption(
+        "--sampling-headers",
+        "api",
+        dict(
+            action="store_true",
+            default=False,
+            help="read per-request sampling from the X-Temperature, "
+            "X-Presence-Penalty and X-Repetition-Penalty headers, for clients "
+            "such as Claude Code that cannot set sampling fields in the body",
+        ),
+    ),
+    ServeOption(
         "--reasoning",
         "api",
         dict(

@@ -230,6 +230,13 @@ The server checks each value at startup against what a request may set.
 splash serve --model mlx-community/Qwen3.8-27B-4bit --sampling-default temperature=0.6 --sampling-default presence_penalty=1.5
 ```
 
+With `--sampling-headers`, `X-Temperature` (above 0 up to 2) overrides the body's
+temperature, while `X-Presence-Penalty` (-2 to 2) and `X-Repetition-Penalty` (above
+0 up to 3) only fill a field the body leaves out. Claude Code's only per-request
+channel is `ANTHROPIC_CUSTOM_HEADERS`, so on the Messages route these headers are
+the only way to set the penalties, which Anthropic Messages does not define:
+`ANTHROPIC_CUSTOM_HEADERS="X-Temperature: 0.5" claude`.
+
 In vLLM's order, after temperature `min_p` first drops every token less
 likely than `min_p` times the most likely one, `top_k` then keeps the most
 likely of the rest, every one when it is 0 or -1 or past the vocabulary, and
