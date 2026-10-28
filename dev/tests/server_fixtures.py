@@ -788,6 +788,7 @@ def main_args(**overrides):
             "sampling_default": [],
             "default_reasoning_effort": None,
             "reasoning": None,
+            "engine_failure": None,
             "thinking_token_budget": None,
             "thinking_end_text": None,
             "max_context": None,
