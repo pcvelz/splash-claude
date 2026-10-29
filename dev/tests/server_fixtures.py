@@ -791,6 +791,8 @@ def main_args(**overrides):
             "default_reasoning_effort": None,
             "reasoning": None,
             "engine_failure": None,
+            "spawn_guard": None,
+            "model_file": None,
             "thinking_token_budget": None,
             "thinking_end_text": None,
             "max_context": None,
