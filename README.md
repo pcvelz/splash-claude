@@ -43,6 +43,7 @@ Install the command line from [pcvelz/splash-claude](https://github.com/pcvelz/s
 on an Apple M3 or newer with macOS 26.4 or later:
 
 ```bash
+brew trust --formula pcvelz/tap/splash-claude
 brew install pcvelz/tap/splash-claude
 splash-claude serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M
 ```

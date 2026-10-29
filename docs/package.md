@@ -33,6 +33,7 @@ request in `pcvelz/homebrew-tap` takes beside the app's cask; the formula's
 URLs must point to the published release assets. After the tap update merges,
 verify a fresh install and an upgrade from the previous release through the
 public tap, including a real model request and preservation of user data. Run
+`brew trust --formula pcvelz/tap/splash-claude`, then
 `brew audit --strict --online pcvelz/tap/splash-claude`.
 
 Before publishing, verify that the models the README names and the draft
