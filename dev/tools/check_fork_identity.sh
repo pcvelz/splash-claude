@@ -28,8 +28,9 @@ FORMULA_CLASS="SplashClaude"
 CODE_PATTERN='incoai/(homebrew-tap|tap)([^A-Za-z0-9_-]|$)|incoai/splash(\.git|/releases)|incoai\.github\.io|brew +(install|tap|upgrade|audit|reinstall|info)[^|]*incoai/'
 # Release artifacts ship to users: ANY mention of upstream's repo or tap fails.
 ARTIFACT_PATTERN='incoai/(splash|homebrew-tap|tap)([^A-Za-z0-9_-]|$)|incoai\.github\.io'
-# Tests keep upstream strings as fixtures on purpose; the notices credit upstream.
-PATHS=(. ':!dev/tests/**' ':!THIRD_PARTY_NOTICES' ':!dev/tools/check_fork_identity.sh' ':!dev/tools/verify_upstream_merge.sh')
+# Tests keep upstream strings as fixtures on purpose; the notices credit upstream;
+# the guards themselves name upstream in order to refuse it.
+PATHS=(. ':!dev/tests/**' ':!THIRD_PARTY_NOTICES' ':!dev/tools/check_fork_identity.sh' ':!dev/tools/verify_upstream_merge.sh' ':!.githooks/pre-push')
 
 FAILS=0
 fail() { echo "BLOCKED: $*"; FAILS=$((FAILS + 1)); }
@@ -69,8 +70,11 @@ scan_artifacts() {
         grep -qE "^class (Splash|SplashApp) " "$f" \
             && fail "$f: class name is upstream's (Splash/SplashApp) - the fork's formula is $FORMULA_CLASS"
         if grep -q "^class $FORMULA_CLASS < Formula" "$f"; then
-            grep -q 'conflicts_with "splash"' "$f" \
-                || fail "$f: formula installs bin/splash but lacks conflicts_with \"splash\" - it collides with upstream's formula"
+            grep -q 'bin/"splash-claude"' "$f" \
+                || fail "$f: formula does not install the fork's splash-claude command"
+            if grep -q '(bin/"splash")' "$f"; then
+                fail "$f: formula still installs upstream's splash command"
+            fi
             grep -q "github.com/$FORK_REPO/releases/download/" "$f" \
                 || fail "$f: url is not a $FORK_REPO release asset"
         fi
