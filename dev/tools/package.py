@@ -84,7 +84,7 @@ CHAT_ASSET_FILES = (
 # Splash's license and the notices of the third-party code it ships.
 LICENSE_FILES = ("LICENSE", "THIRD_PARTY_NOTICES")
 # The GitHub repository releases are published from.
-REPOSITORY = "incoai/splash"
+REPOSITORY = "pcvelz/splash-claude"
 # The engine's files in build/, and the host-step spin's library beside them
 # when the build has one: a Metal compiler that refuses its kernel leaves none
 # (Makefile, HOST_STEP_LIB), and the engine then runs awake host steps without
@@ -214,7 +214,7 @@ def formula(version, url, checksum, macos_min):
         escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("#{", "\\#{")
         return '"' + escaped + '"'
 
-    return f"""class SplashMacOSRequirement < Requirement
+    return f"""class SplashClaudeMacOSRequirement < Requirement
   fatal true
   satisfy(build_env: false) {{ OS.mac? && MacOS.full_version >= {quote(macos_min)} }}
 
@@ -223,7 +223,7 @@ def formula(version, url, checksum, macos_min):
   end
 end
 
-class Splash < Formula
+class SplashClaude < Formula
   desc "Local inference engine for Apple silicon, built around the model"
   homepage "https://github.com/{REPOSITORY}"
   url {quote(url)}
@@ -232,31 +232,31 @@ class Splash < Formula
 
   depends_on arch: :arm64
   depends_on macos: :tahoe
-  depends_on SplashMacOSRequirement
+  depends_on SplashClaudeMacOSRequirement
 
   def install
     libexec.install Dir["*"]
-    (bin/"splash").write <<~SH
+    (bin/"splash-claude").write <<~SH
       #!/bin/sh
       export PYTHONDONTWRITEBYTECODE=1
       exec "#{{opt_libexec}}/python/bin/python3" -u "#{{opt_libexec}}/install/launcher.py" "$@"
     SH
-    chmod 0755, bin/"splash"
-    zsh_completion.install_symlink libexec/"install/completions/_splash"
-    bash_completion.install_symlink libexec/"install/completions/splash.bash" => "splash"
-    fish_completion.install_symlink libexec/"install/completions/splash.fish"
+    chmod 0755, bin/"splash-claude"
+    zsh_completion.install_symlink libexec/"install/completions/_splash" => "_splash-claude"
+    bash_completion.install_symlink libexec/"install/completions/splash.bash" => "splash-claude"
+    fish_completion.install_symlink libexec/"install/completions/splash.fish" => "splash-claude.fish"
   end
 
   def caveats
     <<~CAVEAT
       Serve a model:
-        splash serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M
+        splash-claude serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M
     CAVEAT
   end
 
   test do
-    assert_match version.to_s, shell_output("#{{bin}}/splash --version")
-    assert_match "serve", shell_output("#{{bin}}/splash --help")
+    assert_match version.to_s, shell_output("#{{bin}}/splash-claude --version")
+    assert_match "serve", shell_output("#{{bin}}/splash-claude --help")
   end
 end
 """
@@ -292,7 +292,7 @@ def main(argv=None):
         args.url
         or f"https://github.com/{REPOSITORY}/releases/download/{args.version}/{archive.name}"
     )
-    (dist / "splash.rb").write_text(
+    (dist / "splash-claude.rb").write_text(
         formula(args.version, url, checksum, args.macos_min)
     )
     print(

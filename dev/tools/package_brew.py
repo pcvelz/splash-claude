@@ -43,24 +43,27 @@ def main(argv=None):
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
     args = parser.parse_args(argv)
     dist = args.dist.resolve()
-    formula_file = dist / "splash.rb"
+    formula_file = dist / "splash-claude.rb"
     if not formula_file.is_file():
         parser.error(f"missing {formula_file}; run make package first")
     cellar = Path(brew("--cellar", capture=True).strip())
     prefix = Path(brew("--prefix", capture=True).strip())
-    if (cellar / "splash").exists() or os.path.lexists(prefix / "bin/splash"):
+    if (cellar / "splash-claude").exists() or os.path.lexists(prefix / "bin/splash-claude"):
         parser.error(
             "Splash is already installed; use a release machine without an existing installation"
         )
 
     tap = f"splash-check/package-{uuid.uuid4().hex[:8]}"
-    name = f"{tap}/splash"
+    name = f"{tap}/splash-claude"
     brew("tap-new", "--no-git", tap)
+    trusted = False
     try:
         tap_formula = (
-            Path(brew("--repository", tap, capture=True).strip()) / "Formula/splash.rb"
+            Path(brew("--repository", tap, capture=True).strip()) / "Formula/splash-claude.rb"
         )
         shutil.copyfile(formula_file, tap_formula)
+        brew("trust", "--formula", name)
+        trusted = True
         info = json.loads(brew("info", "--json=v2", name, capture=True))["formulae"][0]
         if info["versions"]["stable"] != args.version:
             parser.error("formula version does not match --version")
@@ -122,7 +125,7 @@ def main(argv=None):
             # brew test sets up a developer build environment. Validate the
             # user's entry point directly so this check needs no toolchain.
             help_text = subprocess.check_output(
-                [prefix / "bin/splash", "--help"], text=True
+                [prefix / "bin/splash-claude", "--help"], text=True
             )
             if "serve" not in help_text:
                 raise RuntimeError("installed launcher did not list serve")
@@ -132,9 +135,11 @@ def main(argv=None):
     finally:
         # The preflight above ensures these can only be our installation.
         try:
-            if (cellar / "splash").exists():
+            if (cellar / "splash-claude").exists():
                 brew("uninstall", "--formula", name)
         finally:
+            if trusted:
+                brew("untrust", "--formula", name)
             brew("untap", tap)
 
 

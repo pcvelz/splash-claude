@@ -89,4 +89,4 @@ _splash() {
     done < <("$directory/models" "$prefix")
 }
 
-complete -F _splash splash
+complete -F _splash splash splash-claude

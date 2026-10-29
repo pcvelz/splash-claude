@@ -25,7 +25,7 @@ ZIP = re.compile(r".*/\.notarize-[^/]+/Splash\.zip")
 # The command line's files of release 1.5.0, as make package and make
 # package-bottle name them.
 ARCHIVE = "splash-1.5.0-arm64-macos26.tar.gz"
-BOTTLE = "splash-1.5.0.arm64_tahoe.bottle.tar.gz"
+BOTTLE = "splash-claude-1.5.0.arm64_tahoe.bottle.tar.gz"
 
 
 def recorded(commands, *paths):
@@ -218,7 +218,7 @@ class ReleaseAppTests(unittest.TestCase):
         for path in files:
             path.write_text(f"{path.name}\n")
         digests = [package.digest(dist / ARCHIVE), package.digest(dist / BOTTLE)]
-        (dist / "splash.rb").write_text(
+        (dist / "splash-claude.rb").write_text(
             "".join(f'sha256 "{digest}"\n' for digest in digests[: 2 if formula else 1])
         )
         return files
@@ -229,19 +229,19 @@ class ReleaseAppTests(unittest.TestCase):
             self.assertEqual(
                 problem,
                 f"dist/ has no {ARCHIVE}, {ARCHIVE}.sha256, "
-                "splash-1.5.0.*.bottle.tar.gz: make package and make package-bottle",
+                "splash-claude-1.5.0.*.bottle.tar.gz: make package and make package-bottle",
             )
             made = self.command_line()
             (self.root / "dist/splash-1.4.1.arm64_tahoe.bottle.tar.gz").touch()
             self.assertEqual(
                 release_app.command_line("1.5.0"),
-                (made, self.root / "dist/splash.rb", None),
+                (made, self.root / "dist/splash-claude.rb", None),
             )
             # A formula of other files, as an earlier release's.
             self.command_line(formula=False)
             self.assertRegex(
                 release_app.command_line("1.5.0")[2],
-                f"^dist/splash.rb is not the formula of {re.escape(ARCHIVE)}",
+                f"^dist/splash-claude.rb is not the formula of {re.escape(ARCHIVE)}",
             )
 
     def precheck(self, *findings, stdout=None):
@@ -550,10 +550,10 @@ class ReleaseAppTests(unittest.TestCase):
   version "1.5.0"
   sha256 "{checksum}"
 
-  url "https://github.com/incoai/splash/releases/download/#{{version}}/Splash-#{{version}}.dmg"
+  url "https://github.com/pcvelz/splash-claude/releases/download/#{{version}}/Splash-#{{version}}.dmg"
   name "Splash"
   desc "Local inference engine for Apple silicon, built around the model"
-  homepage "https://github.com/incoai/splash"
+  homepage "https://github.com/pcvelz/splash-claude"
 
   livecheck do
     url :url
@@ -619,31 +619,31 @@ end
             [
                 "git push origin refs/tags/1.5.0",
                 "cd /splash/dist/release/1.5.0",
-                "gh release create 1.5.0 --repo incoai/splash --draft --verify-tag "
+                "gh release create 1.5.0 --repo pcvelz/splash-claude --draft --verify-tag "
                 "--title 1.5.0 --notes-file notes.md",
-                "gh release upload 1.5.0 --repo incoai/splash "
+                "gh release upload 1.5.0 --repo pcvelz/splash-claude "
                 "SHA256SUMS Splash-1.5.0.dmg Splash.dmg appcast.xml",
-                "gh release edit 1.5.0 --repo incoai/splash --draft=false --latest",
-                'cp -R Formula Casks "$(brew --repository incoai/tap)"',
-                'cd "$(brew --repository incoai/tap)" && git switch -c splash-1.5.0',
-                "brew audit --strict --online incoai/tap/splash",
-                "brew audit --cask --strict --online incoai/tap/splash-app",
-                "git add Formula/splash.rb Casks/splash-app.rb && "
-                "git commit -m 'splash 1.5.0'",
-                "git push -u origin splash-1.5.0 && gh pr create --fill",
-                "brew install --cask incoai/tap/splash-app",
+                "gh release edit 1.5.0 --repo pcvelz/splash-claude --draft=false --latest",
+                'cp -R Formula Casks "$(brew --repository pcvelz/tap)"',
+                'cd "$(brew --repository pcvelz/tap)" && git switch -c splash-claude-1.5.0',
+                "brew audit --strict --online pcvelz/tap/splash-claude",
+                "brew audit --cask --strict --online pcvelz/tap/splash-app",
+                "git add Formula/splash-claude.rb Casks/splash-app.rb && "
+                "git commit -m 'splash-claude 1.5.0'",
+                "git push -u origin splash-claude-1.5.0 && gh pr create --fill",
+                "brew install --cask pcvelz/tap/splash-app",
             ],
         )
         # A release candidate is a prerelease, never the latest, and leaves
         # the tap alone.
         candidate = release_app.publishing("1.5.0-rc.1", folder, assets)
         self.assertIn(
-            "gh release create 1.5.0-rc.1 --repo incoai/splash --draft --verify-tag "
+            "gh release create 1.5.0-rc.1 --repo pcvelz/splash-claude --draft --verify-tag "
             "--title 1.5.0-rc.1 --notes-file notes.md --prerelease",
             candidate,
         )
         self.assertIn(
-            "gh release edit 1.5.0-rc.1 --repo incoai/splash --draft=false",
+            "gh release edit 1.5.0-rc.1 --repo pcvelz/splash-claude --draft=false",
             candidate,
         )
         self.assertFalse(any("brew" in line for line in candidate))
@@ -781,7 +781,7 @@ end
             "built without it check for no update",
             f"{release} exists",
             f"dist/ has no {ARCHIVE}, {ARCHIVE}.sha256, "
-            "splash-1.5.0.*.bottle.tar.gz: make package and make package-bottle",
+            "splash-claude-1.5.0.*.bottle.tar.gz: make package and make package-bottle",
         ]
         stops = [f"A release would stop here: {refusal}." for refusal in refusals]
         lines = printed.splitlines()
@@ -806,7 +806,7 @@ end
             "is empty.",
             "Publishing release 1.5.0, made without DRY_RUN, would take:",
             f"  cd {release}",
-            "  gh release upload 1.5.0 --repo incoai/splash SHA256SUMS "
+            "  gh release upload 1.5.0 --repo pcvelz/splash-claude SHA256SUMS "
             "Splash-1.5.0.dmg Splash.dmg",
         ):
             self.assertIn(line, lines)
@@ -843,14 +843,14 @@ end
                 listed = [image, "Splash.dmg"]
                 if "-rc." not in version:
                     files += [ARCHIVE, f"{ARCHIVE}.sha256", BOTTLE]
-                    files += ["Casks/splash-app.rb", "Formula/splash.rb"]
+                    files += ["Casks/splash-app.rb", "Formula/splash-claude.rb"]
                     listed += [ARCHIVE, BOTTLE]
                     self.assertTrue(
                         (folder / BOTTLE).samefile(self.root / "dist" / BOTTLE)
                     )
                     self.assertEqual(
-                        (folder / "Formula/splash.rb").read_text(),
-                        (self.root / "dist/splash.rb").read_text(),
+                        (folder / "Formula/splash-claude.rb").read_text(),
+                        (self.root / "dist/splash-claude.rb").read_text(),
                     )
                 self.assertEqual(self.files(folder), sorted(files))
                 self.assertEqual(
@@ -865,7 +865,7 @@ end
                     path for path in files if "/" not in path and path != "notes.md"
                 )
                 self.assertIn(
-                    f"  gh release upload {version} --repo incoai/splash "
+                    f"  gh release upload {version} --repo pcvelz/splash-claude "
                     f"{' '.join(uploaded)}\n",
                     printed,
                 )
@@ -903,7 +903,7 @@ end
                 "error: SPARKLE_PUBLIC_KEY in dev/tools/package_app.py is empty, "
                 "and apps built without it check for no update",
                 f"error: dist/ has no {ARCHIVE}, {ARCHIVE}.sha256, "
-                "splash-1.5.0.*.bottle.tar.gz: make package and make package-bottle",
+                "splash-claude-1.5.0.*.bottle.tar.gz: make package and make package-bottle",
             ],
         )
         self.assertFalse((self.root / "dist/release").exists())

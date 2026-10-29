@@ -286,7 +286,7 @@ class PackageTests(unittest.TestCase):
             "1.0", "https://example.org/release.tar.gz", "a" * 64, "26.4"
         )
         self.assertIn("depends_on macos: :tahoe", text)
-        self.assertIn("depends_on SplashMacOSRequirement", text)
+        self.assertIn("depends_on SplashClaudeMacOSRequirement", text)
         self.assertIn(
             'satisfy(build_env: false) { OS.mac? && MacOS.full_version >= "26.4" }',
             text,
@@ -294,13 +294,14 @@ class PackageTests(unittest.TestCase):
         self.assertLess(
             text.index("satisfy(build_env: false)"), text.index("def install")
         )
+        self.assertNotIn('conflicts_with "splash"', text)
         self.assertIn("python/bin/python3", text)
         self.assertIn("install/launcher.py", text)
         self.assertNotIn("make", text)
         self.assertNotIn("pip install", text)
         self.assertNotIn("download-token", text)
         self.assertIn('"$@"', text)
-        self.assertIn('chmod 0755, bin/"splash"', text)
+        self.assertIn('chmod 0755, bin/"splash-claude"', text)
 
     @unittest.skipUnless(shutil.which("ruby"), "Ruby is needed to exercise the formula")
     def test_formula_checks_minimum_os_without_running_install(self):
@@ -314,7 +315,7 @@ class Requirement
   end
 end
 class Formula
-  [:desc, :homepage, :url, :version, :sha256, :license, :depends_on, :test].each do |name|
+  [:desc, :homepage, :url, :version, :sha256, :license, :conflicts_with, :depends_on, :test].each do |name|
     define_singleton_method(name) { |*args, &block| }
   end
 end
@@ -328,7 +329,7 @@ module MacOS
   def self.full_version; Version.new(ENV.fetch("TEST_VERSION")); end
 end
 eval STDIN.read
-puts SplashMacOSRequirement.check
+puts SplashClaudeMacOSRequirement.check
 """
         formula = package.formula(
             "1.0", "https://example.org/a.tar.gz", "a" * 64, "26.4"
@@ -360,15 +361,15 @@ puts SplashMacOSRequirement.check
         with tempfile.TemporaryDirectory(prefix="splash formula ") as temporary:
             root = Path(temporary)
             brew = root / "homebrew prefix"
-            previous = brew / "Cellar/splash/old"
-            prefix = brew / "Cellar/splash/new"
-            opt = brew / "opt/splash"
+            previous = brew / "Cellar/splash-claude/old"
+            prefix = brew / "Cellar/splash-claude/new"
+            opt = brew / "opt/splash-claude"
             opt.parent.mkdir(parents=True)
             opt.symlink_to(previous)
             completion_entries = (
-                ("share/zsh/site-functions/_splash", "_splash"),
-                ("etc/bash_completion.d/splash", "splash.bash"),
-                ("share/fish/vendor_completions.d/splash.fish", "splash.fish"),
+                ("share/zsh/site-functions/_splash-claude", "_splash"),
+                ("etc/bash_completion.d/splash-claude", "splash.bash"),
+                ("share/fish/vendor_completions.d/splash-claude.fish", "splash.fish"),
             )
             old_assets = previous / "libexec/install/completions"
             old_assets.mkdir(parents=True)
@@ -427,7 +428,7 @@ class Requirement
   def self.satisfy(*args, &block); end
 end
 class Formula
-  [:desc, :homepage, :url, :version, :sha256, :license, :depends_on, :test].each do |name|
+  [:desc, :homepage, :url, :version, :sha256, :license, :conflicts_with, :depends_on, :test].each do |name|
     define_singleton_method(name) { |*args, &block| }
   end
   attr_reader :libexec, :opt_libexec, :bin, :zsh_completion, :bash_completion, :fish_completion
@@ -444,7 +445,7 @@ class Formula
   def odie(message); raise message; end
 end
 load ARGV[0]
-Splash.new(Pathname(ARGV[1]), Pathname(ARGV[2])).install
+SplashClaude.new(Pathname(ARGV[1]), Pathname(ARGV[2])).install
 """
             subprocess.run(
                 ["ruby", "-e", driver, str(formula), str(prefix), str(opt)],
@@ -454,6 +455,8 @@ Splash.new(Pathname(ARGV[1]), Pathname(ARGV[2])).install
                 text=True,
             )
             self.assertEqual(opt.resolve(), previous.resolve())
+            self.assertTrue((prefix / "bin/splash-claude").is_file())
+            self.assertFalse((prefix / "bin/splash").exists())
             for entry, asset in completion_entries:
                 link = prefix / entry
                 self.assertTrue(link.is_symlink())

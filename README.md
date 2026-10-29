@@ -19,7 +19,7 @@ It works together with
 a proxy that switches between Splash and llama.cpp. The rest of this README is
 upstream's.
 
-[![CI](https://github.com/incoai/splash/actions/workflows/ci.yml/badge.svg)](https://github.com/incoai/splash/actions/workflows/ci.yml)
+[![CI](https://github.com/pcvelz/splash-claude/actions/workflows/ci.yml/badge.svg)](https://github.com/pcvelz/splash-claude/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Apple%20silicon-black.svg)](#quick-start)
 
@@ -33,15 +33,12 @@ It reuses cached prefixes and batches concurrent requests automatically.
 
 ## Quick start
 
-[Download the Splash desktop app](https://github.com/incoai/splash/releases/latest/download/Splash.dmg)
-for an Apple M3 or newer on macOS 26.4 or later, open the disk image and drag
-Splash into Applications.
-
-The command line needs the same Mac and [Homebrew](https://brew.sh):
+Install the command line from [pcvelz/splash-claude](https://github.com/pcvelz/splash-claude)
+on an Apple M3 or newer with macOS 26.4 or later:
 
 ```bash
-brew install incoai/tap/splash
-splash serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M
+brew install pcvelz/tap/splash-claude
+splash-claude serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M
 ```
 
 The first run downloads the model and its matching draft and starts serving
@@ -52,10 +49,17 @@ Once it prints `Ready`, leave this terminal open. Open <http://127.0.0.1:8000>
 in your browser, or run an installed coding agent from another terminal:
 
 ```bash
-splash opencode    # or: splash claude / splash codex / splash hermes / splash pi
+splash-claude claude    # or: splash-claude opencode / splash-claude codex / splash-claude hermes / splash-claude pi
 ```
 
-For a server started with another `--port`, pass the same `--port` to the agent.
+To start Claude Code directly against Splash's default port instead:
+
+```bash
+ANTHROPIC_BASE_URL=http://127.0.0.1:8000 claude
+```
+
+For a server started with another `--port`, pass the same `--port` to the agent
+or use that port in `ANTHROPIC_BASE_URL`.
 
 Press Ctrl+C in the server terminal to stop Splash.
 For LM Studio Bionic, follow its [Splash setup guide](https://lmstudio.ai/blog/splash-engine).
@@ -116,7 +120,7 @@ To serve files already on this Mac, pass the target's GGUF file or GGUF/MLX
 directory directly, and a compatible local DFlash2 draft:
 
 ```bash
-splash serve --model local/qwen \
+splash-claude serve --model local/qwen \
   --model-dir /models/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_M.gguf \
   --draft-model /models/Qwen3.8-27B-DFlash2
 ```
@@ -129,7 +133,7 @@ See [local model files](docs/models.md#local-model-files) for details.
 ## Settings
 
 Memory and context are sized automatically, up to the model's native context
-window. To set your own limits or cache options, add these to `splash serve`:
+window. To set your own limits or cache options, add these to `splash-claude serve`:
 
 | Option | Purpose |
 | --- | --- |
@@ -147,7 +151,7 @@ Use `--max-memory` to leave room for other applications.
 The server listens on localhost without authentication by default. For LAN
 access, authentication, browser apps on other origins, and other options, see
 [server configuration](docs/server.md#server-configuration) or
-`splash serve --help`.
+`splash-claude serve --help`.
 [KV precision](docs/server.md#kv-cache-precision) ·
 [SSD cache](docs/server.md#ssd-cache) ·
 [Advanced memory settings](docs/server.md#memory-and-context)
@@ -209,6 +213,6 @@ ship precompiled, with no Xcode or local tuning required.
 ## More
 
 - [Documentation](docs/README.md): configuration, API, internals, building, and testing.
-- [Issues and feedback](https://github.com/incoai/splash/issues)
+- [Issues and feedback](https://github.com/pcvelz/splash-claude/issues)
 - [Apache-2.0](LICENSE). GGUF kernels include MIT-licensed material from
   llama.cpp; see [third-party notices](THIRD_PARTY_NOTICES). Model weights keep their own licenses.

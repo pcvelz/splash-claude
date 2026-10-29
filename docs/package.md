@@ -3,12 +3,13 @@
 Release archives contain no Hugging Face credentials.
 Users accessing private models supply their own `HF_TOKEN` or Hugging Face login.
 
-Release versions are three-part, `x.y.z`, with no `v` prefix: after `1.2.1`
-comes `1.2.2` for a fix or `1.3.0` for a feature. Use the same version in all
-three commands:
+Command-line release versions are four-part, `x.y.z.f`, with no `v` prefix:
+`x.y.z` is the upstream version the fork is based on and `f` is the fork
+revision. After `1.5.0.1` comes `1.5.0.2`; a fork based on upstream `1.6.0`
+starts at `1.6.0.1`. Use the same version in all three commands:
 
 ```sh
-VERSION=1.2.2  # the release being built
+VERSION=1.5.0.1  # the release being built
 make package RELEASE_VERSION=$VERSION
 make package-bottle RELEASE_VERSION=$VERSION
 make package-check RELEASE_VERSION=$VERSION
@@ -16,23 +17,23 @@ make package-check RELEASE_VERSION=$VERSION
 
 `make package` writes the runtime archive,
 `dist/splash-<version>-arm64-macos26.tar.gz`, its checksum beside it
-(`<archive>.sha256`) and the formula, `dist/splash.rb`; `make package-bottle`
+(`<archive>.sha256`) and the formula, `dist/splash-claude.rb`; `make package-bottle`
 adds the bottle to `dist/` and its block to the formula. These commands do not
 publish. Build bottles on the oldest supported macOS. Bottle/check commands use
 a temporary tap and remove their installation; they refuse to replace an
 existing Splash installation. The install check requires a poured bottle and
 runs the bundled launcher without a compiler or separate Python installation.
 
-To publish, tag the verified release commit in `incoai/splash` with the version
+To publish, tag the verified release commit in `pcvelz/splash-claude` with the version
 (no `v` prefix), preserving existing history and tags, and make the release
 with `make release-app` ([releases](#releases)). Its folder carries the runtime
 archive, its `.sha256` file and the bottle beside the desktop app's disk images
-and appcast, and `dist/splash.rb` as `Formula/splash.rb`, which the pull
-request in `incoai/homebrew-tap` takes beside the app's cask; the formula's
+and appcast, and `dist/splash-claude.rb` as `Formula/splash-claude.rb`, which the pull
+request in `pcvelz/homebrew-tap` takes beside the app's cask; the formula's
 URLs must point to the published release assets. After the tap update merges,
 verify a fresh install and an upgrade from the previous release through the
 public tap, including a real model request and preservation of user data. Run
-`brew audit --strict --online incoai/tap/splash`.
+`brew audit --strict --online pcvelz/tap/splash-claude`.
 
 Before publishing, verify that the models the README names and the draft
 repositories of `families.FAMILIES` are publicly accessible. Check the installed
@@ -105,7 +106,7 @@ installed models, they also drive the app end to end and, with
 
 The app updates itself with [Sparkle](https://sparkle-project.org), the
 release `app/Package.swift` pins. It checks the appcast of the latest GitHub
-release, `https://github.com/incoai/splash/releases/latest/download/appcast.xml`
+release, `https://github.com/pcvelz/splash-claude/releases/latest/download/appcast.xml`
 (`APPCAST_URL` in `dev/tools/package_app.py`), a URL every app shipped keeps,
 and opens a disk image it downloads only once it has checked who signed it:
 the release key, an EdDSA key whose public half is `SPARKLE_PUBLIC_KEY` there,
@@ -191,16 +192,16 @@ folder it names.
 
 It writes `dist/release/<version>` and uploads nothing: `Splash-<version>.dmg`
 and the same file as `Splash.dmg`, which
-`https://github.com/incoai/splash/releases/latest/download/Splash.dmg` names,
+`https://github.com/pcvelz/splash-claude/releases/latest/download/Splash.dmg` names,
 the command line's archive, `.sha256` file and bottle, `SHA256SUMS` of the disk
 images and archives, `appcast.xml`, `notes.md`, the notary logs and, unless it
-is a release candidate, `Formula/splash.rb` and `Casks/splash-app.rb` for
-`incoai/homebrew-tap`. The cask's `zap` removes the app's chats, logs, caches
+is a release candidate, `Formula/splash-claude.rb` and `Casks/splash-app.rb` for
+`pcvelz/homebrew-tap`. The cask's `zap` removes the app's chats, logs, caches
 and settings, not the models, locks and runtime the command line keeps in
 `~/Library/Application Support/Splash`, nor the Hugging Face cache. It prints
 what publishing takes, from the folder, so that a copy of it can be published
-from another Mac, one with `gh` signed in with write access to `incoai/splash`
-and `incoai/homebrew-tap`, and Homebrew with `incoai/tap` tapped: the tag, a
+from another Mac, one with `gh` signed in with write access to `pcvelz/splash-claude`
+and `pcvelz/homebrew-tap`, and Homebrew with `pcvelz/tap` tapped: the tag, a
 draft release of the folder's files, published once its `Splash.dmg` opens on
 a clean Mac, and the tap's pull request.
 
@@ -274,7 +275,7 @@ Downloads or another disk, point Sparkle at its appcast:
 
 ```sh
 defaults write ai.inco.splash SUFeedURL \
-    https://github.com/incoai/splash/releases/download/x.y.z-rc.1/appcast.xml
+    https://github.com/pcvelz/splash-claude/releases/download/x.y.z-rc.1/appcast.xml
 ```
 
 Check for Updates… then installs it and relaunches; each prompt comes once, and

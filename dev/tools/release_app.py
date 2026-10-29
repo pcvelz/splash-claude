@@ -26,10 +26,10 @@ sys.path.insert(0, str(ROOT))
 
 from dev.tools import appcast, package, package_app  # noqa: E402
 
-# The tap incoai/homebrew-tap: the command line's formula, splash, and the
-# app's cask, splash-app.
-TAP = "incoai/tap"
-FORMULA = "splash"
+# The tap pcvelz/homebrew-tap: the command line's formula, splash-claude,
+# and the app's cask, splash-app.
+TAP = "pcvelz/tap"
+FORMULA = "splash-claude"
 CASK = "splash-app"
 # A Developer ID Application identity as codesign takes it, by its name, whose
 # team, a person's or an organization's, is all that tells their releases
@@ -246,12 +246,12 @@ def command_line(version):
     the tap; and why they are not ready, or None."""
     dist = ROOT / "dist"
     archive = dist / f"splash-{version}-arm64-macos26.tar.gz"
-    bottles = sorted(dist.glob(f"splash-{version}.*.bottle.tar.gz"))
+    bottles = sorted(dist.glob(f"{FORMULA}-{version}.*.bottle.tar.gz"))
     files = [archive, archive.with_name(f"{archive.name}.sha256"), *bottles]
-    formula = dist / "splash.rb"
+    formula = dist / f"{FORMULA}.rb"
     missing = [path.name for path in files if not path.is_file()]
     if not bottles:
-        missing.append(f"splash-{version}.*.bottle.tar.gz")
+        missing.append(f"{FORMULA}-{version}.*.bottle.tar.gz")
     if missing:
         problem = (
             f"dist/ has no {', '.join(missing)}: make package and make package-bottle"
@@ -260,7 +260,7 @@ def command_line(version):
     text = formula.read_text() if formula.is_file() else ""
     if not all(package.digest(path) in text for path in (archive, *bottles)):
         problem = (
-            f"dist/splash.rb is not the formula of {archive.name} and its bottle: "
+            f"dist/splash-claude.rb is not the formula of {archive.name} and its bottle: "
             "make package-bottle"
         )
         return files, formula, problem
@@ -558,7 +558,7 @@ def publishing(version, folder, assets):
     branch = f"{FORMULA}-{version}"
     tap = f'"$(brew --repository {TAP})"'
     return lines + [
-        f"# Then, with write access to incoai/homebrew-tap and Homebrew, {TAP} "
+        f"# Then, with write access to pcvelz/homebrew-tap and Homebrew, {TAP} "
         "tapped, the formula and the cask, on a branch of the tap:",
         f"cp -R Formula Casks {tap}",
         f"cd {tap} && git switch -c {branch}",
