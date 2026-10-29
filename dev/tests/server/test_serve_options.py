@@ -51,6 +51,11 @@ REFUSED_CONTEXTS = ("0", "-1", "1010001", "987K", "2M", "1.5M", "M", "bad")
 # Every shared option: accepted arguments with the value they parse to, and
 # refused arguments.
 OPTIONS = {
+    "--model-file": values(
+        "--model-file",
+        {"/models/qwen.gguf": "/models/qwen.gguf", "qwen.gguf": "qwen.gguf"},
+        ("", " "),
+    ),
     "--host": values(
         "--host", {"0.0.0.0": "0.0.0.0", "mymac.local": "mymac.local"}, ()
     ),
@@ -224,6 +229,11 @@ OPTIONS = {
         {"relaunch": "relaunch", "exit": "exit"},
         ("restart", "none", ""),
     ),
+    "--spawn-guard": values(
+        "--spawn-guard",
+        {'test -z "$(pgrep -x splash)"': 'test -z "$(pgrep -x splash)"'},
+        ("", " "),
+    ),
     "--api-key": values(
         "--api-key",
         {"secret-key": "secret-key"},
@@ -237,7 +247,7 @@ OPTIONS = {
 
 
 def dest(flag):
-    return flag.removeprefix("--").replace("-", "_")
+    return flag.lstrip("-").replace("-", "_")
 
 
 def native_command_lines():
@@ -273,7 +283,13 @@ class ServeOptionsTests(unittest.TestCase):
 
     def test_both_parsers_accept_and_reject_the_same_values(self):
         self.assertEqual(
-            set(OPTIONS), {option.flag for option in serve_options.SERVE_OPTIONS}
+            set(OPTIONS),
+            {
+                option.flag
+                if isinstance(option.flag, str)
+                else next(f for f in option.flag if f.startswith("--"))
+                for option in serve_options.SERVE_OPTIONS
+            },
         )
         defaults = [vars(parse(required)) for parse, required in PARSERS]
         for option in serve_options.SERVE_OPTIONS:
@@ -364,7 +380,9 @@ class ServeOptionsTests(unittest.TestCase):
             "--allowed-host=proxy.local",
             "--allowed-origin=tauri://localhost",
         ]
-        args = launcher.parse_args([*LAUNCHER_ARGS, *launched])
+        args = launcher.parse_args(
+            [*LAUNCHER_ARGS, *launched, "-m", "/models/qwen.gguf"]
+        )
         argv = serve_options.serve_argv(args)
         environment = serve_options.serve_environment(args)
         # Every option but the key travels on the command line; the key only
@@ -373,6 +391,8 @@ class ServeOptionsTests(unittest.TestCase):
             {argument.partition("=")[0] for argument in argv},
             {
                 option.flag
+                if isinstance(option.flag, str)
+                else next(f for f in option.flag if f.startswith("--"))
                 for option in serve_options.SERVE_OPTIONS
                 if not option.secret
             },
@@ -389,6 +409,24 @@ class ServeOptionsTests(unittest.TestCase):
         defaults = launcher.parse_args(LAUNCHER_ARGS)
         self.assertEqual(serve_options.serve_argv(defaults), [])
         self.assertEqual(serve_options.serve_environment(defaults), {})
+
+    def test_both_parsers_take_the_model_file_by_either_spelling(self):
+        # The short spelling is for a supervisor that reads model files off
+        # command lines (-m/--model elsewhere); Splash never loads the value.
+        for parse, required in PARSERS:
+            for spelling in ("-m", "--model-file"):
+                with self.subTest(parser=parse.__module__, spelling=spelling):
+                    args = parse([*required, spelling, "/models/qwen.gguf"])
+                    self.assertEqual(args.model_file, "/models/qwen.gguf")
+                    # --model keeps its own value beside -m.
+                    self.assertEqual(args.model, "owner/repo")
+        # serve_argv forwards the long spelling; the server parses it back.
+        args = api.parse_args([*SERVER_ARGS, "-m", "/models/qwen.gguf"])
+        self.assertEqual(
+            serve_options.serve_argv(args), ["--model-file=/models/qwen.gguf"]
+        )
+        served = api.parse_args([*SERVER_ARGS, *serve_options.serve_argv(args)])
+        self.assertEqual(served.model_file, "/models/qwen.gguf")
 
     def test_serve_options_imports_only_the_standard_library(self):
         result = subprocess.run(

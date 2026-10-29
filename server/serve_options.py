@@ -285,6 +285,21 @@ def parse_max_image_pixels(value):
     return pixels
 
 
+def parse_model_file(value):
+    # Splash never loads this file; it exists so that a supervisor reading
+    # the model file off the process's command line (as llama-swap's memory
+    # brake reads -m/--model) sees which file this server serves.
+    if not isinstance(value, str) or not value.strip():
+        raise argparse.ArgumentTypeError("must name a model file")
+    return value
+
+
+def parse_spawn_guard(value):
+    if not isinstance(value, str) or not value.strip():
+        raise argparse.ArgumentTypeError("must name a command for /bin/sh -c")
+    return value
+
+
 def parse_served_model_name(value):
     if (
         not isinstance(value, str)
@@ -390,7 +405,7 @@ GROUPS = (
 class ServeOption:
     """An option of both commands, and how the launcher passes it on."""
 
-    flag: str
+    flag: str | tuple[str, ...]
     # The key of the help group that lists it (GROUPS).
     group: str
     # add_argument's keywords, help included.
@@ -405,7 +420,12 @@ class ServeOption:
 
     @property
     def dest(self):
-        return self.flag.removeprefix("--").replace("-", "_")
+        # The long flag names the attribute, even where the option also
+        # takes a short spelling (-m/--model-file).
+        flag = self.flag
+        if not isinstance(flag, str):
+            (flag,) = (f for f in flag if f.startswith("--"))
+        return flag.lstrip("-").replace("-", "_")
 
     def default(self):
         if self.environment is not None:
@@ -414,6 +434,21 @@ class ServeOption:
 
 
 SERVE_OPTIONS = (
+    ServeOption(
+        # The value is for the supervisor, not for Splash: the server never
+        # loads it. Both parsers pass it through untouched. The long flag
+        # comes first so it stays the option's name in help and in
+        # serve_argv, whatever spelling was given.
+        ("--model-file", "-m"),
+        "model",
+        dict(
+            type=parse_model_file,
+            metavar="PATH",
+            help="the model file this server serves, for a supervisor that "
+            "reads model files off command lines; Splash ignores the value "
+            "besides checking it is not empty",
+        ),
+    ),
     ServeOption(
         "--host",
         "network",
@@ -776,6 +811,19 @@ SERVE_OPTIONS = (
         environment="SPLASH_ENGINE_FAILURE",
     ),
     ServeOption(
+        "--spawn-guard",
+        "requests",
+        dict(
+            type=parse_spawn_guard,
+            metavar="COMMAND",
+            help="run this command through /bin/sh -c before every native "
+            "engine spawn, with SPLASH_SERVER_PID set to the server's pid; "
+            "exit 0 lets the spawn proceed, any other exit refuses it (default: "
+            "SPLASH_SPAWN_GUARD, else no guard)",
+        ),
+        environment="SPLASH_SPAWN_GUARD",
+    ),
+    ServeOption(
         "--decode-share",
         "requests",
         dict(
@@ -837,8 +885,9 @@ def add_serve_arguments(parser, groups=None):
     if groups is None:
         groups = option_groups(parser)
     for option in SERVE_OPTIONS:
+        flags = option.flag if isinstance(option.flag, tuple) else (option.flag,)
         groups[option.group].add_argument(
-            option.flag, **{**option.options, "default": copy.copy(option.default())}
+            *flags, **{**option.options, "default": copy.copy(option.default())}
         )
 
 
@@ -866,12 +915,17 @@ def serve_argv(args):
         value = getattr(args, option.dest)
         if option.secret or value == option.default():
             continue
+        # The server's command line always spells an option long, whatever
+        # spelling the launcher was given.
+        flag = option.flag
+        if not isinstance(flag, str):
+            (flag,) = (f for f in flag if f.startswith("--"))
         if option.options.get("action") == "store_true":
-            argv.append(option.flag)
+            argv.append(flag)
         elif option.options.get("action") == "append":
-            argv.extend(f"{option.flag}={option.text(item)}" for item in value)
+            argv.extend(f"{flag}={option.text(item)}" for item in value)
         else:
-            argv.append(f"{option.flag}={option.text(value)}")
+            argv.append(f"{flag}={option.text(value)}")
     return argv
 
 

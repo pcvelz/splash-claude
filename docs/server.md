@@ -87,6 +87,7 @@ paths for `--model-dir`, `--draft-model` and `--mmproj`.
 | `--draft-model` | The family's released DFlash2 draft | A compatible repository or local directory in its place; required for a family without a released draft. See [drafts](models.md#drafts). |
 | `--language-only` | Off | Skip vision loading; image and PDF input is rejected. See [vision](models.md#vision). |
 | `--offline` | Off | Start the installed model without asking the Hub, as `HF_HUB_OFFLINE=1` does. See [revisions](#revisions). |
+| `-m`, `--model-file` | None | The model file this server serves, for a supervisor that reads model files off process command lines (as llama-swap's memory brake reads `-m`/`--model`). Splash ignores the value besides checking it is not empty. |
 | `--port` | `SPLASH_PORT` or `8000` | HTTP port. |
 | `--host` | `127.0.0.1` | HTTP bind address. See [network and authentication](#network-and-authentication). |
 | `--allowed-host` | No extra names | Additional HTTP Host name, e.g. `mymac.local`; repeatable. |
