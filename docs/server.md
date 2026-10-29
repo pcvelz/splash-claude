@@ -117,6 +117,7 @@ paths for `--model-dir`, `--draft-model` and `--mmproj`.
 | `--served-model-name` | None | Additional model name the API accepts; repeatable. See [API model aliases](#api-model-aliases). |
 | `--announce-served-name` | Off | Report the first `--served-model-name` in responses; needs `--served-model-name`. |
 | `--accept-any-model` | Off | Accept requests whatever `model` they name; for a proxy that forwards its clients' model names. |
+| `--llama-cpp-compat` | `SPLASH_LLAMA_CPP_COMPAT` or off | Answer llama.cpp's `/slots` and `/props` probes, keep one llama.cpp slot lane per generation, and stamp it back as `id_slot`; for a proxy that supervises this server as it does llama-server. See [llama.cpp-compatible probes](#llamacpp-compatible-probes). |
 | `--sampling-default` | None (Qwen's generation config for `temperature`, `top_p` and `top_k`; the neutral value for the rest) | Value of a sampling field that a request leaves out; repeatable, e.g. `temperature=0.6`. See [sampling](api.md#sampling). |
 | `--sampling-headers` | Off | Read `X-Temperature`, `X-Presence-Penalty` and `X-Repetition-Penalty` headers as per-request sampling; for clients such as Claude Code. See [sampling](api.md#sampling). |
 | `--reasoning` | `SPLASH_REASONING` or `auto` | `off` makes the server decide that no request reasons. See [reasoning](#default-reasoning-effort). |
@@ -753,6 +754,39 @@ splash serve --model mlx-community/Qwen3.8-27B-4bit --served-model-name local-qw
 
 Aliases cannot contain whitespace, control characters, `\`, `%`, `?`, `#`,
 or empty, `.` or `..` path segments. This keeps model discovery URLs unambiguous.
+
+## llama.cpp-compatible probes
+
+A proxy such as llama-swap supervises a llama.cpp child by a fixed contract: it
+polls llama-server's `GET /slots` and `GET /props` for the child's context
+window and per-slot state, and pins a session to one slot by sending `id_slot`
+in the generation body and reading the same number back from the response.
+Splash has neither route nor llama.cpp slots, so a proxy that supervises it
+sees nothing to supervise.
+
+`--llama-cpp-compat` (or `SPLASH_LLAMA_CPP_COMPAT=1`) answers that contract from
+this server's own state:
+
+- `GET /slots` and `GET /props` answer from the same status document `GET
+  /status` returns. `/slots` rows are keyed by lane, never by list position, so
+  a session keeps its own row while the scheduler reorders requests; a request
+  the engine has only queued keeps its row but reports `is_processing: false`,
+  because a wait for a lane is not a frozen prefill and a proxy's stall guard
+  must not cut it. An idle server answers one idle row per lane so `n_ctx`
+  stays readable. Both probes stay quiet in the console: a poll per second
+  would bury the request lines.
+- Each generation request occupies one lane, `0..--queue-size-1`, from its
+  arrival until the engine reports it done, errored or cancelled. A body with
+  an in-range `id_slot` takes that lane; without one it takes the lowest free
+  lane. A lane re-assigned by the proxy belongs to the newest request.
+- Every generation response stamps the lane back as `id_slot`: the top level of
+  a JSON response, each chunk of an OpenAI stream, the `message` object of an
+  Anthropic `message_start`, and the `response` object of a Responses
+  `response.created`.
+- With the option on, `id_slot` in a request body is accepted; without it, it
+  is refused as an unsupported field.
+
+Without the option nothing changes: no routes, no accepted field, no stamping.
 
 ## Default reasoning effort
 
