@@ -13,7 +13,8 @@ where each one stands upstream:
 | No request reasons, whatever it asks | `--reasoning off` | [#615](https://github.com/incoai/splash/pull/615) |
 | Exit instead of relaunching a failed engine | `--engine-failure exit` | [#617](https://github.com/incoai/splash/pull/617) |
 | Per-request sampling from headers, for clients that cannot set it in the body | `--sampling-headers` | [#618](https://github.com/incoai/splash/pull/618) |
-| A supervisor's check before every engine spawn | `--spawn-guard COMMAND` | PR planned |
+| A supervisor's check before every engine spawn | `--spawn-guard COMMAND` | [#637](https://github.com/incoai/splash/pull/637) |
+| llama.cpp-shaped `/slots` and `/props`, and requests pinned to a slot by `id_slot`, for proxies such as llama-swap | `--llama-cpp-compat` | [#638](https://github.com/incoai/splash/pull/638) |
 | Serve any model name with the local model | `--accept-any-model` | fork only |
 | Name the served model file for a supervisor | `-m` / `--model-file PATH` | fork only |
 
