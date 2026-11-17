@@ -46,10 +46,7 @@ is Qwen3.8-27B as we run it:
 
 ```bash
 splaude serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q6_K_XL \
-  --accept-any-model --sampling-headers --reasoning off \
-  --sampling-default temperature=0.7 --sampling-default top_p=0.8 \
-  --sampling-default top_k=20 --sampling-default min_p=0 \
-  --sampling-default presence_penalty=1.5 \
+  --accept-any-model --reasoning-effort none \
   --max-context 262144 --kv-format int8 --idle-release off
 ```
 
@@ -58,15 +55,13 @@ What each setting does:
 - `--model owner/repo:QUANT`: the GGUF to serve, downloaded on the first start.
 - `--accept-any-model`: Claude Code asks for several model names (its title and
   summary calls too); every one is answered with the loaded model.
-- `--sampling-headers`: a session can set sampling per request through headers.
-- `--reasoning off`: no thinking on Claude Code's turns; in our runs thinking
-  never rescued a stuck tool loop on Qwen3.8-27B and only slowed every turn.
-  Qwen3.8-Flash-Next is the exception: it runs `--reasoning auto`.
-- `--sampling-default NAME=VALUE`: Claude Code sends no sampling settings, so
-  these become them. Shown: the model card's instruct recipe (temperature 0.7,
-  top_p 0.8, top_k 20, min_p 0) plus `presence_penalty=1.5`, which keeps long
-  tool loops from repeating themselves. Flash-Next takes its thinking recipe
-  instead: `temperature=1.0 top_p=0.95 top_k=20 min_p=0 presence_penalty=0`.
+- `--reasoning-effort none`: no thinking on Claude Code's turns; in our runs
+  thinking never rescued a stuck tool loop on Qwen3.8-27B and only slowed every
+  turn. Qwen3.8-Flash-Next is the exception: leave the option out.
+- Sampling: Claude Code sends no sampling settings, so a request gets the
+  model's published ones. To set more, such as `presence_penalty=1.5` (which
+  keeps long tool loops from repeating themselves), put the fields in the
+  request body through a proxy; with llama-swap that is its `setParams`.
 - `--max-context 262144`: the context Claude Code may fill. Lower it when the
   model leaves little memory for the cache; 131072 is plenty for most sessions.
 - `--kv-format int8`: halves the memory of the context cache.
@@ -172,10 +167,6 @@ Every option is off unless you set it, so without them Splaude behaves like Spla
 | Option | What it does | Upstream |
 |---|---|---|
 | `--accept-any-model` | Serves every model name Claude Code asks for, including its title and summary requests, with the loaded model. | Splaude only |
-| `--reasoning off` | Never think, whatever the request asks. The default, `auto`, lets each request decide. | [#615](https://github.com/incoai/splash/pull/615) |
-| `--sampling-default NAME=VALUE` | Claude Code sends no sampling settings; these become the defaults. | [#614](https://github.com/incoai/splash/pull/614) |
-| `--sampling-headers` | Set sampling per session through headers, e.g. `ANTHROPIC_CUSTOM_HEADERS=$'X-Temperature: 0.7'`. | [#618](https://github.com/incoai/splash/pull/618) |
-| `--chat-template-file FILE` | Use your own chat template. | Splaude only |
 
 **For supervisors and proxies**
 

@@ -22,10 +22,6 @@ def post_messages(exchange, body, deadline):
         # body, where the generation accepts it under --llama-cpp-compat and
         # refuses it without (Frontend._check_id_slot).
         chat["id_slot"] = body["id_slot"]
-    if app.sampling_headers:
-        # The translation keeps only temperature, top_p and top_k, so the
-        # headers apply to the chat body it produces.
-        chat = request_fields.sampling_from_headers(exchange.headers, chat)
     job = app.prepare(
         chat,
         deadline=deadline,
@@ -116,15 +112,12 @@ def to_chat_body(body, *, thinking_resolver):
             "a final assistant message (prefill) is not supported; "
             "end messages with a user turn",
         )
+    # Every API's sampling and scheduling fields, of which Anthropic defines
+    # temperature, top_p and top_k, as Chat takes them (request_fields).
     chat.update(
         max_completion_tokens=max_tokens,
         stop=_stop_sequences(body.get("stop_sequences")),
-        temperature=body.get("temperature"),
-        top_p=body.get("top_p"),
-        top_k=body.get("top_k"),
-        seed=body.get("seed"),
-        priority=body.get("priority"),
-        cache_salt=body.get("cache_salt"),
+        **{name: body.get(name) for name in request_fields.CHAT_GENERATION_FIELDS},
     )
     chat = {key: value for key, value in chat.items() if value is not None}
     return chat, omitted

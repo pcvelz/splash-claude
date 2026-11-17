@@ -57,8 +57,17 @@ OPTIONS = {
         {"/models/qwen.gguf": "/models/qwen.gguf", "qwen.gguf": "qwen.gguf"},
         ("", " "),
     ),
+    # An address, which the bind checks, or a UNIX socket's path, which
+    # unix: alone does not give.
     "--host": values(
-        "--host", {"0.0.0.0": "0.0.0.0", "mymac.local": "mymac.local"}, ()
+        "--host",
+        {
+            "0.0.0.0": "0.0.0.0",
+            "unix:/tmp/splash.sock": "unix:/tmp/splash.sock",
+            "unix:splash.sock": "unix:splash.sock",
+            "mymac.local": "mymac.local",
+        },
+        ("unix:",),
     ),
     "--served-model-name": values(
         "--served-model-name",
@@ -66,28 +75,24 @@ OPTIONS = {
         ("", "has space", "a?b", "a#b", "a%b", "a\\b", "/a", "a//b", "a/../b"),
         repeatable=True,
     ),
-    "--chat-template-file": values(
-        "--chat-template-file",
-        {"/t/qwen.jinja": "/t/qwen.jinja"},
-        ("", " "),
-    ),
-    "--sampling-default": values(
-        "--sampling-default",
-        {"temperature=0.6": ("temperature", 0.6), "top_k=40": ("top_k", 40)},
-        ("temperature", "nope=1", "top_k=1.5", "top_p=x"),
-        repeatable=True,
-    ),
     "--announce-served-name": (
         [(["--announce-served-name", "--served-model-name=local"], True)],
         [["--announce-served-name"]],
+    ),
+    "--reasoning-effort": (
+        [([f"--reasoning-effort={effort}"], effort) for effort in REASONING_EFFORTS],
+        [
+            ["--reasoning-effort="],
+            ["--reasoning-effort=off"],
+            ["--reasoning-effort=XHIGH"],
+            # It leaves no request for a default effort to set.
+            ["--reasoning-effort=none", "--default-reasoning-effort=low"],
+        ],
     ),
     "--default-reasoning-effort": values(
         "--default-reasoning-effort",
         {effort: effort for effort in REASONING_EFFORTS},
         ("", "turbo", "XHIGH"),
-    ),
-    "--reasoning": values(
-        "--reasoning", {"auto": "auto", "off": "off"}, ("on", "none", "")
     ),
     "--thinking-token-budget": values(
         "--thinking-token-budget", {"0": 0, "4096": 4096}, ("-1", "1.5", "many")
@@ -97,9 +102,20 @@ OPTIONS = {
         {"</think>": "</think>", "Time is up.\n</think>": "Time is up.\n</think>"},
         (),
     ),
+    "--chat-template-file": values(
+        "--chat-template-file",
+        {
+            "/srv/template.jinja": Path("/srv/template.jinja"),
+            "~/template.jinja": Path.home() / "template.jinja",
+        },
+        ("", " "),
+    ),
     "--kv-format": values("--kv-format", {"int8": "int8", "bf16": "bf16"}, ("fp16",)),
     "--state-format": values(
         "--state-format", {"fp32": "fp32", "bf16": "bf16"}, ("fp16", "int8")
+    ),
+    "--cached-states": values(
+        "--cached-states", {"int8": "int8", "exact": "exact"}, ("", "fp32", "Exact")
     ),
     "--disable-ane": ([(["--disable-ane"], True)], []),
     "--activations": values(
@@ -251,7 +267,6 @@ OPTIONS = {
     "--allow-idle-sleep": ([(["--allow-idle-sleep"], True)], []),
     "--accept-any-model": ([(["--accept-any-model"], True)], []),
     "--llama-cpp-compat": ([(["--llama-cpp-compat"], True)], []),
-    "--sampling-headers": ([(["--sampling-headers"], True)], []),
     "--no-webui": ([(["--no-webui"], True)], []),
 }
 
@@ -276,6 +291,7 @@ class ServeOptionsTests(unittest.TestCase):
         self.enterContext(mock.patch.dict(os.environ))
         for name in (
             "SPLASH_API_KEY",
+            "SPLASH_REASONING_EFFORT",
             "SPLASH_DEFAULT_REASONING_EFFORT",
             "SPLASH_THINKING_TOKEN_BUDGET",
             "SPLASH_THINKING_END_TEXT",
@@ -322,6 +338,7 @@ class ServeOptionsTests(unittest.TestCase):
 
     def test_both_parsers_check_defaults_from_the_environment(self):
         for name, value, parsed, flag in (
+            ("SPLASH_REASONING_EFFORT", "none", "none", "--reasoning-effort"),
             (
                 "SPLASH_DEFAULT_REASONING_EFFORT",
                 "low",
@@ -392,40 +409,28 @@ class ServeOptionsTests(unittest.TestCase):
                 os.environ.pop("SPLASH_LLAMA_CPP_COMPAT", None)
                 self.assertIs(parse(required).llama_cpp_compat, False)
 
-    def test_server_refuses_a_sampling_default_no_request_may_set(self):
-        self.refuse(
-            api.parse_args, [*SERVER_ARGS, "--sampling-default", "temperature=5"]
-        )
-
-    def test_chat_template_file_replaces_the_tokenizer_template(self):
-        import tempfile
-
-        from server.chat_templates import ChatTemplateError, load_template_file
-
-        tokenizer = mock.Mock(chat_template="shipped")
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "t.jinja"
-            path.write_text("fixed {{ x }}")
-            digest = load_template_file(tokenizer, path)
-            self.assertEqual(tokenizer.chat_template, "fixed {{ x }}")
-            self.assertEqual(len(digest), 64)
-            tokenizer.chat_template = "shipped"
-            with self.assertRaises(ChatTemplateError):
-                load_template_file(tokenizer, Path(directory) / "missing.jinja")
-            self.assertEqual(tokenizer.chat_template, "shipped")
-        self.assertIsNone(api.parse_args(SERVER_ARGS).chat_template_file)
-
     def test_launcher_forwards_exactly_what_the_server_parses(self):
+        # Every option at once, but that the effort of every request and the
+        # default effort are refused together: each travels without the other.
+        for left_out in ("--default-reasoning-effort", "--reasoning-effort"):
+            with self.subTest(left_out=left_out):
+                self.forward_all_but(left_out)
+        # Defaults stay with the server, which reads them itself.
+        defaults = launcher.parse_args(LAUNCHER_ARGS)
+        self.assertEqual(serve_options.serve_argv(defaults), [])
+        self.assertEqual(serve_options.serve_environment(defaults), {})
+
+    def forward_all_but(self, left_out):
         launched = [
             *(
                 argument
-                for accepted, _ in OPTIONS.values()
+                for flag, (accepted, _) in OPTIONS.items()
+                if flag != left_out
                 for arguments, _ in accepted[-1:]
                 for argument in arguments
             ),
             # A repeatable option keeps every value, in order.
             "--served-model-name=stable",
-            "--sampling-default=presence_penalty=1.5",
             "--allowed-host=proxy.local",
             "--allowed-origin=tauri://localhost",
         ]
@@ -443,7 +448,7 @@ class ServeOptionsTests(unittest.TestCase):
                 if isinstance(option.flag, str)
                 else next(f for f in option.flag if f.startswith("--"))
                 for option in serve_options.SERVE_OPTIONS
-                if not option.secret
+                if not option.secret and option.flag != left_out
             },
         )
         self.assertFalse(any("secret-key" in argument for argument in argv))
@@ -454,10 +459,6 @@ class ServeOptionsTests(unittest.TestCase):
             self.assertEqual(
                 getattr(served, option.dest), getattr(args, option.dest), option.flag
             )
-        # Defaults stay with the server, which reads them itself.
-        defaults = launcher.parse_args(LAUNCHER_ARGS)
-        self.assertEqual(serve_options.serve_argv(defaults), [])
-        self.assertEqual(serve_options.serve_environment(defaults), {})
 
     def test_both_parsers_take_the_model_file_by_either_spelling(self):
         # The short spelling is for a supervisor that reads model files off

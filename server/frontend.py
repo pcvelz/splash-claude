@@ -2,10 +2,8 @@
 
 import hashlib
 import json
-import re
 import secrets
 import threading
-from bisect import bisect
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import count
@@ -17,13 +15,7 @@ from . import images as image_input
 from . import protocol as wire
 from . import request_fields
 from .backend import Job, ReasoningRequest
-from .chat_format import (
-    REASONING_EFFORTS,
-    THINK_END,
-    THINK_START,
-    TOOL_CALL_CLOSE,
-    TOOL_CALL_OPEN,
-)
+from .chat_format import REASONING_EFFORTS, THINK_END, THINK_START, TOOL_CALL_OPEN
 from .chat_messages import normalize_messages, template_messages
 from .chat_templates import (
     LATER_SYSTEM_UNSUPPORTED,
@@ -44,8 +36,7 @@ from .latency import LatencyMetrics
 from .llama_cpp_compat import lane_map as compat_lane_map
 from .metrics import is_finite_number
 from .output import MAX_STOP_CHARACTERS
-from .serve_options import REASONING_MODES
-from .tokenization import PromptTokenizer, plain_tokens, tokenizable
+from .tokenization import PromptTokenizer, tokenizable, unquoted
 from .tool_schema import (
     ToolPolicy,
     json_grammar,
@@ -108,116 +99,6 @@ def accepts_sampling(name, value):
 COMPLETION_DEFAULT_MAX_TOKENS = 16
 
 
-# A stable marker lets repeated image requests reuse the compiled template.
-IMAGE_RENDER_MARKER = f"__splash_image_{secrets.token_hex(16)}__"
-
-# The chat template's own tags, which the tokenizer matches as their added
-# tokens wherever the prompt spells them. Quoted in a message's text, as by a
-# tool result that reads a tool-call parser's source, they would hand the
-# model a real call opening or tool-result marker, which it then copies, or
-# stops at, where it means to quote the tag. Marked before the template
-# renders, they encode as their characters; the tags the template writes
-# itself keep their tokens. An assistant message's reasoning quotes them too,
-# but keeps its <think> and </think>, where the template looks for them to
-# split reasoning a client sends inline.
-QUOTED_TAGS = (
-    TOOL_CALL_OPEN,
-    TOOL_CALL_CLOSE,
-    "<tool_response>",
-    "</tool_response>",
-    THINK_START,
-    THINK_END,
-)
-QUOTED_TAG_MARKER = f"__splash_quoted_{secrets.token_hex(16)}_"
-_QUOTED_TAG_MARK = re.compile(re.escape(QUOTED_TAG_MARKER) + r"(\d+)__")
-
-
-def _mark_quoted_tags(value, tags=QUOTED_TAGS):
-    """`value` with each spelling of `tags` in its strings replaced by the
-    tag's marker."""
-    if isinstance(value, str):
-        for tag in tags:
-            if tag in value:
-                value = value.replace(
-                    tag, f"{QUOTED_TAG_MARKER}{QUOTED_TAGS.index(tag)}__"
-                )
-        return value
-    if isinstance(value, dict):
-        return {key: _mark_quoted_tags(item, tags) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_mark_quoted_tags(item, tags) for item in value]
-    return value
-
-
-_TOOL_TAGS = QUOTED_TAGS[:4]
-_RESULT_OPEN_MARK = f"{QUOTED_TAG_MARKER}{QUOTED_TAGS.index('<tool_response>')}__"
-_RESULT_CLOSE_MARK = f"{QUOTED_TAG_MARKER}{QUOTED_TAGS.index('</tool_response>')}__"
-
-
-def _keep_tool_result_frame(content):
-    """A user message's marked content with the outer <tool_response> pair
-    restored where its whole text is one: a client that writes a tool result
-    in the template's layout sends it so, and the template tells such a turn
-    from a question by that pair."""
-    if isinstance(content, str):
-        texts = [content]
-    elif (
-        isinstance(content, list)
-        and content
-        and all(
-            isinstance(part, dict) and isinstance(part.get("text"), str)
-            for part in content
-        )
-    ):
-        texts = [part["text"] for part in content]
-    else:
-        return content
-    if not (
-        texts[0].lstrip().startswith(_RESULT_OPEN_MARK)
-        and texts[-1].rstrip().endswith(_RESULT_CLOSE_MARK)
-    ):
-        return content
-    texts[0] = texts[0].replace(_RESULT_OPEN_MARK, "<tool_response>", 1)
-    head, _, tail = texts[-1].rpartition(_RESULT_CLOSE_MARK)
-    texts[-1] = head + "</tool_response>" + tail
-    if isinstance(content, str):
-        return texts[0]
-    return [{**part, "text": text} for part, text in zip(content, texts)]
-
-
-def _mark_quoted_messages(messages):
-    """The messages with the tags their text quotes marked: in every field
-    but the role, an assistant's <think> and </think> aside."""
-    marked = []
-    for message in messages:
-        role = message.get("role")
-        tags = _TOOL_TAGS if role == "assistant" else QUOTED_TAGS
-        message = {
-            key: value if key == "role" else _mark_quoted_tags(value, tags)
-            for key, value in message.items()
-        }
-        if role == "user" and "content" in message:
-            message["content"] = _keep_tool_result_frame(message["content"])
-        marked.append(message)
-    return marked
-
-
-def _unmark_quoted_tags(rendered):
-    """The rendered text with its quoted tags spelled again, and their spans
-    in it."""
-    parts, spans, end, length = [], set(), 0, 0
-    for match in _QUOTED_TAG_MARK.finditer(rendered):
-        text = rendered[end : match.start()]
-        tag = QUOTED_TAGS[int(match.group(1))]
-        length += len(text)
-        parts += [text, tag]
-        spans.add((length, length + len(tag)))
-        length += len(tag)
-        end = match.end()
-    parts.append(rendered[end:])
-    return "".join(parts), spans
-
-
 def _generation_prompt(probed, rendered, tokens):
     """Whether the generation prompt opens a think block, and how many of the
     prompt's last tokens it is (zero where they differ from its tokens).
@@ -252,6 +133,10 @@ class Prompt:
     template_kwargs: dict = field(default_factory=dict)
     # The reasoning effort the request sent; None where it sent none.
     sent_effort: str | None = None
+    # The reasoning effort its chat_template_kwargs set, which the template
+    # renders over the others; None where they set none Splash names, or the
+    # template reads none (ChatTemplate.reads_effort).
+    template_effort: str | None = None
 
 
 @dataclass
@@ -298,13 +183,12 @@ class Frontend:
         served_model_names=(),
         announce_served_name=False,
         accept_any_model=False,
-        sampling_headers=False,
         llama_cpp_compat=False,
         llama_cpp_queue_size=1,
+        reasoning_effort=None,
         default_reasoning_effort=None,
         default_thinking_token_budget=None,
         sampling_defaults=None,
-        reasoning=None,
     ):
         # What the engine serves, from its Ready (backend.runtime.capabilities):
         # the context follows the latest engine (max_context); its lanes and
@@ -324,13 +208,6 @@ class Frontend:
         self.prompt_tokenizer = PromptTokenizer(
             tokenizer, chat_format.message_boundary, served.max_context_tokens
         )
-        # Quoted tags encode as text where the tokenizer gives offsets, as a
-        # fast one does; another encodes them as before.
-        self.quoted_tag_tokens = (
-            {tag: plain_tokens(tokenizer, tag) for tag in QUOTED_TAGS}
-            if getattr(tokenizer, "is_fast", False)
-            else None
-        )
         self.backend = backend
         # The model id the engine loaded. /status reports it, so an alias
         # can never hide what served a request.
@@ -341,8 +218,6 @@ class Frontend:
         # The name generation and scoring responses report.
         self.response_model = names[0] if announce_served_name else model
         self.accept_any_model = bool(accept_any_model)
-        # Whether a request's sampling headers set its sampling fields.
-        self.sampling_headers = bool(sampling_headers)
         # --llama-cpp-compat (llama_cpp_compat): the lane map a generation
         # response stamps as id_slot; None without the option, which stamps
         # nothing and accepts no id_slot. It folds each request's terminal
@@ -361,6 +236,10 @@ class Frontend:
         # configured from data[0] (splash <client>) requests the name it gets
         # back. Every name stays accepted.
         self.model_names = tuple(dict.fromkeys((self.response_model, model, *names)))
+        # The effort the server gives every chat request in place of whatever
+        # the request says of reasoning (--reasoning-effort); None where each
+        # request's own, or the default below, decides.
+        self.reasoning_effort = reasoning_effort
         if (
             default_reasoning_effort is not None
             and default_reasoning_effort not in REASONING_EFFORTS
@@ -381,12 +260,6 @@ class Frontend:
         for name, value in self.sampling_defaults.items():
             if not accepts_sampling(name, value):
                 raise ValueError(f"invalid sampling default {name}={value!r}")
-        if reasoning is not None and reasoning not in REASONING_MODES:
-            raise ValueError("invalid reasoning")
-        # --reasoning off: the server, not the request, decides that no
-        # request reasons. A client such as Claude Code sends a thinking
-        # config on every Messages request and cannot be told otherwise.
-        self.reasoning_off = reasoning == "off"
         self.request_timeout = request_timeout
         self.constraint_factory = constraint_factory
         self.max_image_pixels = max_image_pixels
@@ -432,17 +305,25 @@ class Frontend:
         return ["text", "image", "pdf"] if self.vision else ["text"]
 
     @property
+    def reasoning_switch(self):
+        """Whether a request's reasoning effort or enable_thinking turns the
+        model's reasoning on and off, as /status reports: where the family's
+        model leaves that to its prompt (ChatFormat.reasoning_switch) and the
+        server has not set every request's effort itself."""
+        return self.chat_format.reasoning_switch and self.reasoning_effort is None
+
+    @property
     def reasoning(self):
         """What /v1/models reports of reasoning: the default template's
         (ChatTemplate.reasoning), with the server's default effort in place of
         the template's own, named by the listed effort it renders like; no
-        efforts for a model that decides itself whether to reason."""
-        if not self.chat_format.reasoning_switch:
+        efforts where a request's effort decides nothing (reasoning_switch),
+        so that a client offers none."""
+        if not self.reasoning_switch:
             return {"thinks": None, "efforts": [], "default": None}
         template = self.chat_templates.select(None)
         reasoning = dict(template.reasoning)
-        effort = "none" if self.reasoning_off else self.default_reasoning_effort
-        if effort is not None:
+        if (effort := self.default_reasoning_effort) is not None:
             reasoning["thinks"] = effort != "none"
             reasoning["default"] = template.effort_names.get(effort)
         return reasoning
@@ -453,7 +334,8 @@ class Frontend:
         status["capabilities"] = {"max_context_tokens": self.max_context}
         status["vision"] = self.vision
         status["input_modalities"] = self.input_modalities
-        status["reasoning_switch"] = self.chat_format.reasoning_switch
+        status["reasoning_switch"] = self.reasoning_switch
+        status["reasoning_effort"] = self.reasoning_effort
         status["chat_template"] = self.chat_templates.status()
         with self.preparation_lock:
             status["frontend"] = {
@@ -529,76 +411,6 @@ class Frontend:
         )
         if frame_bytes > wire.MAX_FRAME_PAYLOAD_BYTES:
             raise APIError(400, "images exceed the request size limit")
-
-    def _render_image_tokens(self, messages, template):
-        """Track placeholders emitted by the template, not quoted in input text.
-
-        A temporary render marker is removed before tokenization, so the pinned
-        template's final text and token IDs remain unchanged. Token offsets tie
-        each real image to its placeholder even when a coding agent has read
-        documentation or source containing literal vision tokens.
-        """
-        pad = self.chat_format.image_pad
-        rendered = self._apply_chat_template(
-            messages,
-            {
-                **template,
-                "tokenize": False,
-                "chat_template": template["chat_template"].replace(
-                    pad, IMAGE_RENDER_MARKER
-                ),
-            },
-        )
-        rendered, quoted = _unmark_quoted_tags(rendered)
-        # A quoted tag after an image marker moves as the pad replaces it.
-        marker_ends = [
-            match.end()
-            for match in re.finditer(re.escape(IMAGE_RENDER_MARKER), rendered)
-        ]
-        shift = len(pad) - len(IMAGE_RENDER_MARKER)
-        quoted = {
-            (start + shift * moved, end + shift * moved)
-            for start, end in quoted
-            for moved in (bisect(marker_ends, start),)
-        }
-        parts = rendered.split(IMAGE_RENDER_MARKER)
-        image_offsets = set()
-        offset = 0
-        for part in parts[:-1]:
-            offset += len(part)
-            image_offsets.add((offset, offset + len(pad)))
-            offset += len(pad)
-        rendered = pad.join(parts)
-        tokens, positions = self._encode_quoting(rendered, quoted, image_offsets)
-        return tokens, positions, rendered
-
-    def _encode_quoting(self, rendered, quoted, image_offsets=frozenset()):
-        """The tokens of `rendered` with each tag at a span of `quoted` as the
-        tokens of its characters, and the indices of the image pads at
-        `image_offsets` among them."""
-        encoded = self._tokenize(
-            rendered,
-            add_special_tokens=False,
-            return_offsets_mapping=True,
-        )
-        tokens, positions = [], []
-        for token, span in zip(encoded["input_ids"], encoded["offset_mapping"]):
-            span = tuple(span)
-            if span in quoted and self.quoted_tag_tokens is not None:
-                tokens.extend(self.quoted_tag_tokens[rendered[span[0] : span[1]]])
-                continue
-            if span in image_offsets:
-                positions.append(len(tokens))
-            tokens.append(token)
-        return tokens, positions
-
-    def _check_image_placeholders(self, prompt_tokens, prepared, positions):
-        """The rendered template holds one placeholder token per image."""
-        pad_id = self.tokenizer.convert_tokens_to_ids(self.chat_format.image_pad)
-        if len(positions) != len(prepared) or any(
-            prompt_tokens[position] != pad_id for position in positions
-        ):
-            raise APIError(400, "image count does not match the rendered template")
 
     @staticmethod
     def _image_token_count(prompt_tokens, prepared):
@@ -867,9 +679,16 @@ class Frontend:
             raise APIError(
                 400, "chat_template_kwargs enable_thinking must be a boolean"
             )
-        if self.reasoning_off:
-            # After the checks, so a malformed request still fails as before.
-            reasoning_effort, enable_thinking = "none", False
+        if self.reasoning_effort is not None:
+            # The server's effort is every request's, as though each had sent
+            # it and nothing else of reasoning: it replaces the request's
+            # effort, its enable_thinking, which would outrank an effort, and
+            # a reasoning_effort among its template variables, which would
+            # outrank Splash's own. It follows the request's own checks, so a
+            # malformed field is refused as without it.
+            reasoning_effort, enable_thinking = self.reasoning_effort, None
+            template_kwargs.pop("reasoning_effort", None)
+        template_effort = template_kwargs.get("reasoning_effort")
         messages = normalize_messages(body.get("messages"), vision=self.vision)
         tools, tool_policy = normalize_tools(
             body.get("tools"),
@@ -896,15 +715,33 @@ class Frontend:
             enable_thinking,
             template_kwargs,
             body.get("reasoning_effort"),
+            template_effort
+            if template_effort in REASONING_EFFORTS
+            and self.chat_templates.select(tools).reads_effort
+            else None,
         )
 
     def _tokenize(self, text, **options):
         with self.latencies.measure("tokenization"):
             return self.tokenizer(tokenizable(text), **options)
 
-    def _apply_chat_template(self, messages, template):
+    def _apply_chat_template(self, messages, source, options):
+        """The prompt the template `source` renders from the request's
+        messages and template variables, each quoted (PromptTokenizer.quote)
+        as text a client sent: what a message, a tool definition or a
+        variable spells is never the template's own tag."""
         with self.latencies.measure("template"):
-            return render_chat_template(self.tokenizer, messages, template)
+            quote = self.prompt_tokenizer.quote
+            return render_chat_template(
+                self.tokenizer,
+                quote(messages),
+                {
+                    "tokenize": False,
+                    "return_dict": False,
+                    "chat_template": source,
+                    **{name: quote(value) for name, value in options.items()},
+                },
+            )
 
     def _render_prompt(
         self, prompt, deadline, *, check_context=True, add_generation_prompt=True
@@ -912,14 +749,11 @@ class Frontend:
         chat_template = self.chat_templates.select(prompt.tools)
         if not chat_template.accepts(prompt.messages):
             raise APIError(400, LATER_SYSTEM_UNSUPPORTED)
-        template = {
-            "tokenize": False,
-            "return_dict": False,
-            "chat_template": chat_template.source,
+        options = {
             **template_options(
                 reasoning_effort=prompt.reasoning_effort,
                 preserve_thinking=prompt.preserve_thinking,
-                tools=_mark_quoted_tags(prompt.tools),
+                tools=prompt.tools,
                 add_generation_prompt=add_generation_prompt,
                 enable_thinking=prompt.enable_thinking,
             ),
@@ -930,23 +764,12 @@ class Frontend:
                 prompt.messages, deadline, check_context=check_context
             )
         remaining_request_time(deadline)
-        positions = []
-        messages = _mark_quoted_messages(prompt.messages)
         try:
-            if images:
-                tokens, positions, rendered = self._render_image_tokens(
-                    messages, template
-                )
-                self._check_image_placeholders(tokens, images, positions)
-            else:
-                rendered = self._apply_chat_template(messages, template)
-                rendered, quoted = _unmark_quoted_tags(rendered)
-                if quoted and self.quoted_tag_tokens is not None:
-                    # _tokenize measures the tokenization itself.
-                    tokens = self._encode_quoting(rendered, quoted)[0]
-                else:
-                    with self.latencies.measure("tokenization"):
-                        tokens = self.prompt_tokenizer.encode(rendered)
+            rendered = self._apply_chat_template(
+                prompt.messages, chat_template.source, options
+            )
+            with self.latencies.measure("tokenization"):
+                tokens = self.prompt_tokenizer.encode(rendered)
         except APIError:
             raise
         except Exception as error:
@@ -965,15 +788,28 @@ class Frontend:
                 error=True,
             )
             # The client reads a template's own refusal, such as a system
-            # message it does not take; other errors may carry internals, and
+            # message it does not take, with what it names of the request
+            # as the request sent it; other errors may carry internals, and
             # the log keeps no request content.
-            reason = f": {error}" if isinstance(error, TemplateError) else ""
+            reason = (
+                f": {unquoted(str(error))}" if isinstance(error, TemplateError) else ""
+            )
             raise APIError(400, f"messages could not be rendered{reason}") from error
+        # The text the model reads; the marks said how it encodes.
+        rendered = unquoted(rendered)
+        # Text a client sent encodes as no added token, so each pad among the
+        # tokens is one the template wrote for an image.
+        positions = []
+        if images:
+            pad_id = self.tokenizer.convert_tokens_to_ids(self.chat_format.image_pad)
+            positions = [index for index, token in enumerate(tokens) if token == pad_id]
+            if len(positions) != len(images):
+                raise APIError(400, "image count does not match the rendered template")
         remaining_request_time(deadline)
         thinking, generation_prompt_tokens = False, 0
         if add_generation_prompt:
             thinking, generation_prompt_tokens = _generation_prompt(
-                chat_template.generation_prompt(template), rendered, tokens
+                chat_template.generation_prompt(options), rendered, tokens
             )
         return RenderedPrompt(
             rendered, tokens, images, positions, thinking, generation_prompt_tokens
@@ -1112,7 +948,10 @@ class Frontend:
             flags,
             thinking=thinking,
             reasoning=ReasoningRequest(
-                prompt.sent_effort, prompt.reasoning_effort, prompt.enable_thinking
+                prompt.sent_effort,
+                prompt.reasoning_effort,
+                prompt.enable_thinking,
+                prompt.template_effort,
             ),
             chat_format=self.chat_format,
             thinking_token_budget=(

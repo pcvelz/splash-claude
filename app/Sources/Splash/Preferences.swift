@@ -158,8 +158,9 @@ struct ServeSettings: Equatable {
 
 /// A `splash serve` option the Server screen offers: its flag, its words, its part of the screen,
 /// and how its value is chosen. `all` holds every option `splash serve` takes but those the app
-/// sets itself (`--model`, `--model-dir`, `--offline`) and those of one model rather than every
-/// start (`--revision`, `--draft-model`, `--mmproj`).
+/// sets itself (`--model`, `--model-dir`, `--offline`), those of one model rather than every
+/// start (`--revision`, `--draft-model`, `--mmproj`, `--chat-template-file`) and
+/// `--reasoning-effort`, which it leaves to the command line.
 struct LaunchOption: Identifiable, Sendable {
     enum Section: String, CaseIterable {
         case main = "Launch Options", memory = "Memory", cache = "SSD Cache"
@@ -367,8 +368,12 @@ extension LaunchOption {
             section: .memory, kind: .choice(standard: "8-bit", choices: [("bf16", "16-bit")], custom: nil)),
         LaunchOption(
             flag: "--state-format", title: "Recurrent state",
-            help: "How a hybrid model such as Qwen3.6 keeps its state. 16-bit takes half the memory, so twice as many fit.",
+            help: "How a hybrid model such as Qwen3.6 keeps the state of the requests it is running. 16-bit takes half the memory. Cached conversations keep the form Cached state sets.",
             section: .memory, kind: .choice(standard: "32-bit", choices: [("bf16", "16-bit")], custom: nil)),
+        LaunchOption(
+            flag: "--cached-states", title: "Cached state",
+            help: "How a hybrid model such as Qwen3.6 keeps the state of each conversation it has cached, in memory and on the SSD. 8-bit takes the least room. Exact keeps the state as Recurrent state runs it, so a conversation goes on exactly where it left off, in up to 3.25 times the room.",
+            section: .memory, kind: .choice(standard: "8-bit", choices: [("exact", "Exact")], custom: nil)),
         LaunchOption(
             flag: "--expert-memory", title: "Expert cache",
             help: "MoE expert weights kept in memory; the others are read from the SSD as needed. Auto gives them what the context leaves. All keeps every expert in memory.",
@@ -449,11 +454,6 @@ extension LaunchOption {
 
     private static let api: [LaunchOption] = [
         LaunchOption(
-            flag: "--reasoning", title: "Thinking for every request",
-            help: "Off: no request thinks, whatever its thinking or effort asks. By default each request decides.",
-            section: .api,
-            kind: .choice(standard: "Each Request Decides", choices: [("off", "Off")], custom: nil)),
-        LaunchOption(
             flag: "--default-reasoning-effort", title: "Thinking",
             help: "How much the model thinks for apps whose requests don’t say. The Chat asks for its own.",
             section: .api,
@@ -490,22 +490,6 @@ extension LaunchOption {
             flag: "--llama-cpp-compat", title: "llama.cpp compatibility",
             help: "Answers llama.cpp’s slot and property probes and stamps each reply with its slot, for a proxy that supervises children as it does llama-server.",
             section: .api, kind: .toggle(on: true)),
-        LaunchOption(
-            flag: "--chat-template-file", title: "Chat template file",
-            help: "A Jinja chat template to use instead of the one the model carries. A file that can’t be read stops the server.",
-            section: .api,
-            kind: .text(Value(prompt: "Model’s Own", message: "The full path of the file, starting with /.",
-                              parse: { $0.hasPrefix("/") && $0.count > 1 ? $0 : nil }), list: false)),
-        LaunchOption(
-            flag: "--sampling-default", title: "Sampling defaults",
-            help: "The value of a sampling setting for requests that set none, as name=value, such as temperature=0.7.",
-            section: .api,
-            kind: .text(Value(prompt: "temperature=0.7", message: "Name=value pairs, split at commas.",
-                              parse: { samplingDefaults($0) }), list: true)),
-        LaunchOption(
-            flag: "--sampling-headers", title: "Sampling from headers",
-            help: "Reads each request’s sampling from its X-Temperature, X-Presence-Penalty and X-Repetition-Penalty headers, for apps such as Claude Code that can’t set it in the request.",
-            section: .api, kind: .toggle(on: true)),
     ]
 
     private static let requests: [LaunchOption] = [
@@ -539,7 +523,7 @@ extension LaunchOption {
                                                                      parse: { Double($0).flatMap { $0 >= 0 ? String($0) : nil } }))),
         LaunchOption(
             flag: "--verify-rows", title: "Repeatable answers",
-            help: "A MoE model’s greedy and seeded answers repeat when a request runs alone with the same prompts cached, at some cost in speed. A prompt sent again reads from the cache, so its answer can differ.",
+            help: "Greedy and seeded answers repeat when a request runs alone with the same prompts cached, at some cost in speed. A prompt sent again reads from the cache, so its answer can differ.",
             section: .requests, kind: .choice(standard: "Off", choices: [("all", "On")], custom: nil)),
         LaunchOption(
             flag: "--disable-ane", title: "Neural Engine for long prompts",
@@ -586,16 +570,6 @@ extension LaunchOption {
                   let value = text.trimmingCharacters(in: .whitespaces).lowercased()
                   return value.wholeMatch(of: /\d+[smh]?/) != nil ? value : nil
               })
-    }
-
-    /// `text` as name=value pairs split at commas and spaces, or nil for anything else.
-    private static let samplingDefaults: @Sendable (String) -> String? = { text in
-        let pairs = items(text)
-        let valid = pairs.allSatisfy { pair in
-            let parts = pair.split(separator: "=", omittingEmptySubsequences: false)
-            return parts.count == 2 && !parts[0].isEmpty && Double(parts[1]) != nil
-        }
-        return !pairs.isEmpty && valid ? pairs.joined(separator: ", ") : nil
     }
 
     private static let whole: @Sendable (String) -> String? = { Int($0.trimmingCharacters(in: .whitespaces)).flatMap { $0 > 0 ? String($0) : nil } }

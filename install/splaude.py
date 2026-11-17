@@ -60,36 +60,29 @@ NETWORK_ERROR = re.compile(
 )
 
 
-def _serve(reasoning, **sampling):
-    """A serve argv: the reasoning mode, int8 KV and the sampling defaults."""
-    options = ["--reasoning", reasoning, "--kv-format", "int8"]
-    for name, value in sampling.items():
-        options += ["--sampling-default", f"{name}={value}"]
-    return options
+def _serve(*reasoning):
+    """A serve argv: the reasoning effort, if any, and int8 KV. Sampling is
+    the family's published sampling, which Splash applies to a request that
+    sets none."""
+    return [*reasoning, "--kv-format", "int8"]
 
 
 # The settings Claude Code runs with in our tests on Apple silicon, per
 # family: "serve" for Splash, "env" for Claude Code. Saved with the model and
 # editable in CONFIG; a family not listed keeps Splash's defaults.
 # - Qwen3.8-27B: reasoning off (in no recorded run did thinking rescue a
-#   degenerate tool loop), Unsloth's instruct sampling with presence 1.5.
+#   degenerate tool loop).
 # - Qwen3.8-Flash-Next: reasoning on (at a real loop onset it broke the
 #   action loop: 2-3/10 continued against 10/10 with it off), bounded at
-#   4096 thinking tokens; Qwen's thinking sampling; the sparse-KV block
-#   cache at 1200M (past ~62K tokens of context decode fell ~30% at its
-#   floor).
+#   4096 thinking tokens; the sparse-KV block cache at 1200M (past ~62K
+#   tokens of context decode fell ~30% at its floor).
 FAMILY_SETTINGS = {
     "Qwen3.8-27B": {
-        "serve": _serve(
-            "off", temperature=0.7, top_p=0.8, top_k=20, min_p=0, presence_penalty=1.5
-        ),
+        "serve": _serve("--reasoning-effort", "none"),
         "env": {},
     },
     "Qwen3.8-Flash-Next": {
-        "serve": _serve(
-            "auto", temperature=1.0, top_p=0.95, top_k=20, min_p=0, presence_penalty=0
-        )
-        + ["--sparse-kv-memory", "1200M"],
+        "serve": _serve() + ["--sparse-kv-memory", "1200M"],
         "env": {"MAX_THINKING_TOKENS": "4096"},
     },
 }

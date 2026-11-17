@@ -16,7 +16,7 @@ FACTS = {"chip": "Apple M4 Pro", "memory": 48, "macos": "26.4", "free": 300}
 CONFIG = {
     "model": MODEL,
     "name": "Qwen",
-    "serve": ["--reasoning", "off"],
+    "serve": ["--reasoning-effort", "none"],
     "env": {"MAX_THINKING_TOKENS": "4096"},
 }
 
@@ -175,10 +175,12 @@ class FamilySettingsTests(unittest.TestCase):
     def test_reasoning_is_off_for_27b_and_on_for_flash_next(self):
         def reasoning(family):
             serve = splaude.FAMILY_SETTINGS[family]["serve"]
-            return serve[serve.index("--reasoning") + 1]
+            if "--reasoning-effort" not in serve:
+                return "each request decides"
+            return serve[serve.index("--reasoning-effort") + 1]
 
-        self.assertEqual(reasoning("Qwen3.8-27B"), "off")
-        self.assertEqual(reasoning("Qwen3.8-Flash-Next"), "auto")
+        self.assertEqual(reasoning("Qwen3.8-27B"), "none")
+        self.assertEqual(reasoning("Qwen3.8-Flash-Next"), "each request decides")
 
 
 class HubCheckTests(unittest.TestCase):

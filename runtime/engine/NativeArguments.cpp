@@ -93,10 +93,11 @@ std::filesystem::path requireModelRoot(std::string_view argument) {
       std::filesystem::canonical(std::filesystem::path(argument), error);
   if (error || !std::filesystem::is_directory(root, error))
     throw ModelRootError("MODEL_DIRECTORY must name an existing directory");
-  // Its draft/, which a model installed without a draft has none of, is
-  // checked with the rest of the root (inspectModelRoot).
-  if (!std::filesystem::is_directory(root / "target", error))
-    throw ModelRootError("MODEL_DIRECTORY must hold the model's target/ directory");
+  for (const char *role : {"target", "draft"}) {
+    if (!std::filesystem::is_directory(root / role, error))
+      throw ModelRootError(
+          "MODEL_DIRECTORY must hold the model's target/ and draft/ directories");
+  }
   return root;
 }
 
@@ -138,6 +139,10 @@ NativeArguments parseNativeArguments(int argc, const char *const *argv) {
         throw UsageError("--state-format requires fp32 or bf16");
       result.stateFormat =
           value == "fp32" ? ops::GdnStateFormat::Float32 : ops::GdnStateFormat::BFloat16;
+    } else if (option == "--cached-states") {
+      if (value != "int8" && value != "exact")
+        throw UsageError("--cached-states requires int8 or exact");
+      result.exactCachedStates = value == "exact";
     } else if (option == "--decode-share") {
       result.decodeShare = parseDecodeShare(value);
     } else if (option == "--max-image-patches") {
